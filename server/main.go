@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"encoding/json"
 	"github.com/gorilla/websocket"
 )
 
@@ -36,13 +35,10 @@ func CreateRoom() http.HandlerFunc {
 	// This function will create a room where users come and play
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse JSON body to get userid and username
-		type ReqBody struct {
-			UserID   string `json:"userid"`
-			Username string `json:"username"`
-		}
-		var req ReqBody
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
+		uid := r.URL.Query().Get("userid")
+		uname := r.URL.Query().Get("username")
+		if uid == "" || uname == "" {
+			http.Error(w, "Missing userid or username", http.StatusBadRequest)
 			return
 		}
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -51,8 +47,8 @@ func CreateRoom() http.HandlerFunc {
 			return
 		}
 		newUser := User{
-			UserID:       req.UserID,
-			Username:     req.Username,
+			UserID:       uid,
+			Username:     uname,
 			ConnectionID: conn,
 		}
 		fmt.Println("New user created, now initializing the room...")
@@ -66,32 +62,48 @@ func CreateRoom() http.HandlerFunc {
 		}
 		fmt.Println("Successfully created the room", room)
 		Rooms[room.RoomID] = &room
+
+		go handleMessage(newUser, &room)
 	}
 }
 
 func JoinRoom() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Parse roomid from URL query
-		roomIDs, ok := r.URL.Query()["roomid"]
-		if !ok || len(roomIDs[0]) < 1 {
-			http.Error(w, "Missing roomid in URL", http.StatusBadRequest)
+		// Get roomid, userid, and username from URL query parameters
+		roomidStr := r.URL.Query().Get("roomid")
+		userid := r.URL.Query().Get("userid")
+		username := r.URL.Query().Get("username")
+
+		if roomidStr == "" || userid == "" || username == "" {
+			http.Error(w, "Missing roomid, userid, or username", http.StatusBadRequest)
 			return
 		}
+
+		// Convert roomid to int
 		var roomid int
-		_, err := fmt.Sscanf(roomIDs[0], "%d", &roomid)
-		if err != nil {
+		if _, err := fmt.Sscanf(roomidStr, "%d", &roomid); err != nil {
 			http.Error(w, "Invalid roomid", http.StatusBadRequest)
 			return
 		}
 
-		// Parse JSON body to get userid and username
-		type ReqBody struct {
-			UserID   string `json:"userid"`
-			Username string `json:"username"`
+		room, isExist := Rooms[roomid]
+		if !isExist {
+			fmt.Println("Room does not exist")
+			http.Error(w, "Room does not exist", http.StatusNotFound)
+			return
 		}
-		var req ReqBody
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
+
+		isUserExist := false
+		for _, user := range room.ConnectedUsers {
+			if user.UserID == userid {
+				isUserExist = true
+				break
+			}
+		}
+
+		if isUserExist {
+			fmt.Println("User already exist")
+			http.Error(w, "User exists", http.StatusBadRequest)
 			return
 		}
 
@@ -101,37 +113,40 @@ func JoinRoom() http.HandlerFunc {
 			return
 		}
 
-		room, isExist := Rooms[roomid]
-		if !isExist {
-			http.Error(w, "Room does not exist", http.StatusNotFound)
-			return
-		}
-
-		isUserExist := false
-		for _, user := range room.ConnectedUsers {
-			if user.UserID == req.UserID {
-				isUserExist = true
-				break
-			}
-		}
-
 		if !isUserExist {
 			newUser := User{
-				UserID:       req.UserID,
-				Username:     req.Username,
+				UserID:       userid,
+				Username:     username,
 				ConnectionID: conn,
 			}
 			room.ConnectedUsers = append(room.ConnectedUsers, newUser)
+			go handleMessage(newUser, room)
 			fmt.Println("New user added")
-		} else {
-			fmt.Println("User already exists in the room")
 		}
 	}
 }
 
+func handleMessage(u User, room *Room) {
+	userConnection := u.ConnectionID
+	for {
+		_, msg, err := userConnection.ReadMessage()
+		if err != nil {
+			log.Println("There is error while receiving the message", err)
+			return
+		}
+		fmt.Println("message receuved from ", u.Username, " and message is ", string(msg))
+
+		for _, receiver := range room.ConnectedUsers {
+			if receiver.UserID != u.UserID {
+				receiver.ConnectionID.WriteMessage(websocket.TextMessage, msg)
+			}
+		}
+
+	}
+}
 
 func main() {
-	http.HandleFunc("/join" ,JoinRoom())
+	http.HandleFunc("/join", JoinRoom())
 	http.HandleFunc("/create", CreateRoom())
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
