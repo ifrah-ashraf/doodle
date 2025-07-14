@@ -34,41 +34,60 @@ type Room struct {
 
 var Rooms = make(map[int]*Room)
 
-func CreateRoom(c *gin.Context)  {
-	// This function will create a room where users come and play
-		// Parse JSON body to get userid and username
-		uid := c.Query("userid")
-		uname := c.Query("username")
-		if uid == "" || uname == "" {
-			log.Println("one of the parameter is missing in request userid , username")
-			c.JSON(http.StatusBadRequest , gin.H{"message":"params are missing like userid or username"})
-			return
-		}
-		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		newUser := User{
-			UserID:       uid,
-			Username:     uname,
-			ConnectionID: conn,
-		}
-		fmt.Println("New user created, now initializing the room...")
+// This function will create a room where users come and play
+// Parse JSON body to get userid and username
+func CreateRoom(c *gin.Context) {
+	uid := c.Query("userid")
+	uname := c.Query("username")
 
-		RoomIdCounter++
-		room := Room{
-			RoomID:         RoomIdCounter,
-			CreatedBy:      newUser,
-			ConnectedUsers: []User{newUser},
-			CurrentWriter:  conn,
-		}
-		fmt.Println("Successfully created the room", room)
-		Rooms[room.RoomID] = &room
+	if uid == "" || uname == "" {
+		log.Println("[CreateRoom] Missing parameter: userid or username")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   true,
+			"message": "Missing required parameters: userid or username",
+		})
+		return
+	}
 
-		go handleMessage(newUser, &room)
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Printf("[CreateRoom] WebSocket upgrade failed: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   true,
+			"message": "Failed to upgrade to WebSocket",
+		})
+		return
+	}
+
+	newUser := User{
+		UserID:       uid,
+		Username:     uname,
+		ConnectionID: conn,
+	}
+
+	RoomIdCounter++
+	room := Room{
+		RoomID:         RoomIdCounter,
+		CreatedBy:      newUser,
+		ConnectedUsers: []User{newUser},
+		CurrentWriter:  conn,
+	}
+	Rooms[room.RoomID] = &room
+
+	log.Printf("[CreateRoom] Room %d created by user %s\n", room.RoomID, newUser.Username)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Room created successfully",
+		"room": gin.H{
+			"id":         room.RoomID,
+			"created_by": newUser.Username,
+		},
+	})
+
+	go handleMessage(newUser, &room)
 }
 
+// To help users to join a particular room .
 func JoinRoom(c *gin.Context) {
 	// Get roomid, userid, and username from URL query parameters
 	roomidStr := c.Query("roomid")
@@ -150,8 +169,26 @@ func handleMessage(u User, room *Room) {
 func main() {
 	router := gin.Default()
 	router.Use(gin.Recovery())
+	router.Use(CorsMiddleware())
 
 	router.GET("/join",JoinRoom)
 	router.GET("/create", CreateRoom)
 	router.Run()
+}
+
+func CorsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, Authorization")
+
+		//c.Writer.Header().Set("Content-Type", "application/json")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	}
 }

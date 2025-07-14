@@ -1,9 +1,41 @@
+"use client";
+import RoomPanel from "@/components/RoomPanel";
 import Shape from "@/components/Shape";
+import UserList from "@/components/UserList";
+import { useEffect, useState } from "react";
+import { io } from "socket.io-client";
+
+const socket = io("http://localhost:3001");
+
+type Mode = {
+  isSelected: boolean;
+  name: "create"| "join" | "";
+};
 
 export default function Home() {
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+  const [mode, setMode] = useState<Mode | null>(null);
+
+  useEffect(() => {
+    socket.on("user-joined", (newUser) => {
+      setUsers((prev) => [...prev, newUser]);
+    });
+
+    return () => {
+      socket.off("user-joined");
+    };
+  }, []);
+
   return (
-    <div>
-     <Shape/>
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 gap-6 px-4">
+      {mode?.isSelected ? (
+        <>
+          <UserList users={users} />
+          <Shape />
+        </>
+      ) : (
+        <RoomPanel setmode={setMode} />
+      )}
     </div>
   );
 }
