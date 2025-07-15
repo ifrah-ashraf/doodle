@@ -2,10 +2,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FaPencil } from "react-icons/fa6";
 import { CiEraser } from "react-icons/ci";
-import { io } from "socket.io-client";
+//import { io } from "socket.io-client";
 
 // Setup socket (adjust your server URL)
-const socket = io("http://localhost:3001");
+//const socket = io("http://localhost:3001");
 
 function Shape() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -19,7 +19,7 @@ function Shape() {
   const getLineWidth = () => (tool === "pencil" ? 2 : 20);
 
   // Broadcast the drawing action
-  const broadcastDrawing = (type: "start" | "draw", x: number, y: number) => {
+  /* const broadcastDrawing = (type: "start" | "draw", x: number, y: number) => {
     socket.emit("draw", {
       type,
       x,
@@ -27,7 +27,7 @@ function Shape() {
       color: getStrokeStyle(),
       width: getLineWidth(),
     });
-  };
+  }; */
 
   // Mouse events
   const startDrawing = (e: MouseEvent) => {
@@ -42,7 +42,7 @@ function Shape() {
     ctxRef.current.beginPath();
     ctxRef.current.moveTo(x, y);
 
-    broadcastDrawing("start", x, y);
+    //broadcastDrawing("start", x, y);
   };
 
   const draw = (e: MouseEvent) => {
@@ -55,7 +55,7 @@ function Shape() {
     ctxRef.current.lineTo(x, y);
     ctxRef.current.stroke();
 
-    broadcastDrawing("draw", x, y);
+    //broadcastDrawing("draw", x, y);
   };
 
   const endDrawing = () => {
@@ -63,7 +63,7 @@ function Shape() {
   };
 
   // WebSocket drawing listener
-  useEffect(() => {
+  /* useEffect(() => {
     socket.on("receive-draw", ({ type, x, y, color, width }) => {
       const ctx = ctxRef.current;
       if (!ctx) return;
@@ -83,7 +83,7 @@ function Shape() {
     return () => {
       socket.off("receive-draw");
     };
-  }, []);
+  }, []); */
 
   // Setup canvas
   useEffect(() => {

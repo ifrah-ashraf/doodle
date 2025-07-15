@@ -1,16 +1,37 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
-// change this to generate secure room id 
-var RoomIdCounter = 0
+var (
+	roomIDCounter = 0
+	roomMutex     sync.Mutex
+	Rooms         = make(map[int]*Room)
+)
+
+type User struct {
+	UserID   string `json:"userid"`
+	Username string `json:"username"`
+}
+
+type Room struct {
+	RoomID         int
+	CreatedBy      User
+	ConnectedUsers []User
+	Mutex          sync.Mutex
+}
+
+type WebSocketUser struct {
+	UserID string
+	Conn   *websocket.Conn
+}
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -20,160 +41,135 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-type User struct {
-	UserID       string `json:"userid"`
-	Username     string `json:"username"`
-	ConnectionID *websocket.Conn
-}
-type Room struct {
-	RoomID         int `json:"roomid"`
-	CreatedBy      User
-	ConnectedUsers []User
-	CurrentWriter  *websocket.Conn
-}
-
-var Rooms = make(map[int]*Room)
-
-// This function will create a room where users come and play
-// Parse JSON body to get userid and username
 func CreateRoom(c *gin.Context) {
-	uid := c.Query("userid")
-	uname := c.Query("username")
-
-	if uid == "" || uname == "" {
-		log.Println("[CreateRoom] Missing parameter: userid or username")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   true,
-			"message": "Missing required parameters: userid or username",
-		})
+	var user User
+	if err := c.ShouldBindJSON(&user); err != nil || user.UserID == "" || user.Username == "" {
+		log.Println("[CreateRoom] Invalid user payload")
+		c.JSON(http.StatusBadRequest, gin.H{"error": true, "message": "Invalid user payload"})
 		return
 	}
 
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		log.Printf("[CreateRoom] WebSocket upgrade failed: %v\n", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   true,
-			"message": "Failed to upgrade to WebSocket",
-		})
-		return
+	roomMutex.Lock()
+	roomIDCounter++
+	rid := roomIDCounter
+	room := &Room{
+		RoomID:         rid,
+		CreatedBy:      user,
+		ConnectedUsers: []User{user},
 	}
+	Rooms[rid] = room
+	roomMutex.Unlock()
 
-	newUser := User{
-		UserID:       uid,
-		Username:     uname,
-		ConnectionID: conn,
-	}
-
-	RoomIdCounter++
-	room := Room{
-		RoomID:         RoomIdCounter,
-		CreatedBy:      newUser,
-		ConnectedUsers: []User{newUser},
-		CurrentWriter:  conn,
-	}
-	Rooms[room.RoomID] = &room
-
-	log.Printf("[CreateRoom] Room %d created by user %s\n", room.RoomID, newUser.Username)
+	log.Printf("[CreateRoom] Room %d created by user %s (%s)\n", rid, user.Username, user.UserID)
 
 	c.JSON(http.StatusOK, gin.H{
+		"error":   false,
 		"message": "Room created successfully",
 		"room": gin.H{
-			"id":         room.RoomID,
-			"created_by": newUser.Username,
+			"id":              rid,
+			"created_by":      user.Username,
 		},
 	})
-
-	go handleMessage(newUser, &room)
 }
 
-// To help users to join a particular room .
 func JoinRoom(c *gin.Context) {
-	// Get roomid, userid, and username from URL query parameters
-	roomidStr := c.Query("roomid")
-	userid := c.Query("userid")
-	username := c.Query("username")
-
-	if roomidStr == "" || userid == "" || username == "" {
-		log.Println("one of the parameter is missing in request userid , username , roomid")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "one of the parameter is missing in request userid , username , roomid"})
+	var joinPayload struct {
+		RoomID   int    `json:"roomid"`
+		UserID   string `json:"userid"`
+		Username string `json:"username"`
+	}
+	if err := c.ShouldBindJSON(&joinPayload); err != nil || joinPayload.UserID == "" || joinPayload.Username == "" {
+		log.Println("[JoinRoom] Invalid join payload")
+		c.JSON(http.StatusBadRequest, gin.H{"error": true, "message": "Invalid join payload"})
 		return
 	}
 
-	// Convert roomid to int
-	var roomid int
-	if _, err := fmt.Sscanf(roomidStr, "%d", &roomid); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid roomid"})
+	roomMutex.Lock()
+	room, exists := Rooms[joinPayload.RoomID]
+	roomMutex.Unlock()
+	if !exists {
+		log.Printf("[JoinRoom] Room %d does not exist\n", joinPayload.RoomID)
+		c.JSON(http.StatusNotFound, gin.H{"error": true, "message": "Room does not exist"})
 		return
 	}
 
-	room, isExist := Rooms[roomid]
-	if !isExist {
-		fmt.Println("Room does not exist")
-		c.JSON(http.StatusNotFound, gin.H{"error": "Room does not exist"})
-		return
-	}
-
-	isUserExist := false
+	room.Mutex.Lock()
 	for _, user := range room.ConnectedUsers {
-		if user.UserID == userid {
-			isUserExist = true
-			break
-		}
-	}
-
-	if isUserExist {
-		fmt.Println("User already exist")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "User exists"})
-		return
-	}
-
-	// Use Gin's context to get the underlying ResponseWriter and Request
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	if !isUserExist {
-		newUser := User{
-			UserID:       userid,
-			Username:     username,
-			ConnectionID: conn,
-		}
-		room.ConnectedUsers = append(room.ConnectedUsers, newUser)
-		go handleMessage(newUser, room)
-		fmt.Println("New user added")
-	}
-}
-
-func handleMessage(u User, room *Room) {
-	userConnection := u.ConnectionID
-	for {
-		_, msg, err := userConnection.ReadMessage()
-		if err != nil {
-			log.Println("There is error while receiving the message", err)
+		if user.UserID == joinPayload.UserID {
+			room.Mutex.Unlock()
+			log.Printf("[JoinRoom] User %s already exists in room %d\n", joinPayload.UserID, joinPayload.RoomID)
+			c.JSON(http.StatusBadRequest, gin.H{"error": true, "message": "User already exists"})
 			return
 		}
-		fmt.Println("message receuved from ", u.Username, " and message is ", string(msg))
-
-		for _, receiver := range room.ConnectedUsers {
-			if receiver.UserID != u.UserID {
-				receiver.ConnectionID.WriteMessage(websocket.TextMessage, msg)
-			}
-		}
-
 	}
+	newUser := User{UserID: joinPayload.UserID, Username: joinPayload.Username}
+	room.ConnectedUsers = append(room.ConnectedUsers, newUser)
+	room.Mutex.Unlock()
+
+	log.Printf("[JoinRoom] User %s (%s) joined room %d\n", newUser.Username, newUser.UserID, joinPayload.RoomID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"error":   false,
+		"message": "User joined successfully",
+		"room_id": joinPayload.RoomID,
+		"connected_users": Rooms[joinPayload.RoomID].ConnectedUsers ,
+	})
 }
 
-func main() {
-	router := gin.Default()
-	router.Use(gin.Recovery())
-	router.Use(CorsMiddleware())
+func WebSocketHandler(c *gin.Context) {
+	roomidStr := c.Query("roomid")
+	userid := c.Query("userid")
+	if roomidStr == "" || userid == "" {
+		log.Println("[WebSocketHandler] Missing roomid or userid in query")
+		c.JSON(http.StatusBadRequest, gin.H{"error": true, "message": "Missing roomid or userid in query"})
+		return
+	}
 
-	router.GET("/join",JoinRoom)
-	router.GET("/create", CreateRoom)
-	router.Run()
+	roomid, err := strconv.Atoi(roomidStr)
+	if err != nil {
+		log.Println("[WebSocketHandler] Invalid roomid format")
+		c.JSON(http.StatusBadRequest, gin.H{"error": true, "message": "Invalid roomid format"})
+		return
+	}
+
+	roomMutex.Lock()
+	room, exists := Rooms[roomid]
+	roomMutex.Unlock()
+	if !exists {
+		log.Printf("[WebSocketHandler] Room %d not found\n", roomid)
+		c.JSON(http.StatusNotFound, gin.H{"error": true, "message": "Room not found"})
+		return
+	}
+
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Println("[WebSocketHandler] WebSocket upgrade failed:", err)
+		return
+	}
+
+	log.Printf("[WebSocketHandler] WebSocket connection established for user %s in room %d\n", userid, roomid)
+	go handleMessage(WebSocketUser{UserID: userid, Conn: conn}, room)
+}
+
+func handleMessage(sender WebSocketUser, room *Room) {
+	defer sender.Conn.Close()
+	for {
+		_, msg, err := sender.Conn.ReadMessage()
+		if err != nil {
+			log.Printf("[handleMessage] Error from %s: %v\n", sender.UserID, err)
+			return
+		}
+
+		log.Printf("[handleMessage] Message from %s: %s\n", sender.UserID, string(msg))
+
+		room.Mutex.Lock()
+		for _, user := range room.ConnectedUsers {
+			if user.UserID != sender.UserID {
+				// WebSocket broadcasting placeholder
+			}
+		}
+		room.Mutex.Unlock()
+	}
 }
 
 func CorsMiddleware() gin.HandlerFunc {
@@ -183,12 +179,23 @@ func CorsMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, Authorization")
 
-		//c.Writer.Header().Set("Content-Type", "application/json")
-
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
 		}
 		c.Next()
 	}
+}
+
+func main() {
+	r := gin.Default()
+	r.Use(gin.Recovery())
+	r.Use(CorsMiddleware())
+
+	r.POST("/create", CreateRoom)
+	r.POST("/join", JoinRoom)
+	r.GET("/ws", WebSocketHandler)
+
+	log.Println("[Server] Running on :8080")
+	r.Run(":8080")
 }

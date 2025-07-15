@@ -1,8 +1,8 @@
 import React from "react";
 
 type User = {
-  id: string;
-  name: string;
+  userid: string;
+  username: string;
 };
 
 type UserListProps = {
@@ -24,10 +24,10 @@ const UserList: React.FC<UserListProps> = ({ users }) => {
         ) : (
           users.map((user) => (
             <div
-              key={user.id}
+              key={user.userid}
               className="px-3 py-2 bg-gray-100 rounded-md text-sm text-gray-800 hover:bg-gray-200 transition"
             >
-              {user.name}
+              {user.username}
             </div>
           ))
         )}

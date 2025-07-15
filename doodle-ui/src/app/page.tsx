@@ -5,18 +5,24 @@ import UserList from "@/components/UserList";
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:3001");
+//const socket = io("http://localhost:3001");
 
 type Mode = {
   isSelected: boolean;
   name: "create"| "join" | "";
 };
 
+type User = {
+  userid: string;
+  username: string;
+};
+
+
 export default function Home() {
-  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [mode, setMode] = useState<Mode | null>(null);
 
-  useEffect(() => {
+  /* useEffect(() => {
     socket.on("user-joined", (newUser) => {
       setUsers((prev) => [...prev, newUser]);
     });
@@ -24,7 +30,7 @@ export default function Home() {
     return () => {
       socket.off("user-joined");
     };
-  }, []);
+  }, []); */
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 gap-6 px-4">
@@ -34,7 +40,7 @@ export default function Home() {
           <Shape />
         </>
       ) : (
-        <RoomPanel setmode={setMode} />
+        <RoomPanel setmode={setMode} setusers={setUsers} />
       )}
     </div>
   );
