@@ -2,10 +2,24 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FaPencil } from "react-icons/fa6";
 import { CiEraser } from "react-icons/ci";
+import useSocketStore from "@/store/socketStore";
 //import { io } from "socket.io-client";
 
 // Setup socket (adjust your server URL)
 //const socket = io("http://localhost:3001");
+
+type DrawingData = {
+  type: "draw"; // message type
+  roomid: number;
+  userid: string;
+  data: {
+    x: number;
+    y: number;
+    color: string;
+    size: number;
+    tool: "pen" | "eraser" | "marker"; // add more as needed
+  };
+};
 
 function Shape() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -13,6 +27,7 @@ function Shape() {
   const isDrawing = useRef(false);
 
   const [tool, setTool] = useState<"pencil" | "eraser">("pencil");
+  //const socket = useSocketStore((state) => state.socket)
 
   // Handle tool change
   const getStrokeStyle = () => (tool === "pencil" ? "#000" : "#fff");
@@ -20,6 +35,7 @@ function Shape() {
 
   // Broadcast the drawing action
   /* const broadcastDrawing = (type: "start" | "draw", x: number, y: number) => {
+    if
     socket.emit("draw", {
       type,
       x,
@@ -27,7 +43,7 @@ function Shape() {
       color: getStrokeStyle(),
       width: getLineWidth(),
     });
-  }; */
+  };  */
 
   // Mouse events
   const startDrawing = (e: MouseEvent) => {

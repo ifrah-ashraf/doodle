@@ -12,7 +12,7 @@ import (
 )
 
 // Type aliases for cleaner code
-type User = types.User 
+type User = types.User
 type Room = types.Room
 type WebSocketUser = types.WebSocketUser
 
@@ -30,13 +30,12 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-
-// Function to join the room 
+// Function to join the room
 func CreateRoom(c *gin.Context) {
 	var user User
 	if err := c.ShouldBindJSON(&user); err != nil || user.UserID == "" || user.Username == "" {
 		log.Println("[CreateRoom] Invalid user payload")
-		c.JSON(http.StatusBadRequest, gin.H{"error": true, "message": "Invalid user payload"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": true, "message": "Invalid user payload for creating newuser"})
 		return
 	}
 
@@ -45,8 +44,9 @@ func CreateRoom(c *gin.Context) {
 	rid := roomIDCounter
 	room := &Room{
 		RoomID:         rid,
-		CreatedBy:      user,
+		CreatedBy:      user.UserID,
 		ConnectedUsers: []User{user},
+		WebSockets:     make(map[string]*websocket.Conn),
 	}
 	Rooms[rid] = room
 	roomMutex.Unlock()
@@ -56,14 +56,12 @@ func CreateRoom(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"error":   false,
 		"message": "Room created successfully",
-		"room": gin.H{
-			"id":              rid,
-			"created_by":      user.Username,
-		},
+		"room_id": rid ,
+		"created_by": user.Username ,
 	})
 }
 
-// Function to join the room with room id 
+// Function to join the room with room id
 func JoinRoom(c *gin.Context) {
 	var joinPayload struct {
 		RoomID   int    `json:"roomid"`
@@ -101,15 +99,15 @@ func JoinRoom(c *gin.Context) {
 	log.Printf("[JoinRoom] User %s (%s) joined room %d\n", newUser.Username, newUser.UserID, joinPayload.RoomID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"error":   false,
-		"message": "User joined successfully",
-		"room_id": joinPayload.RoomID,
-		"connected_users": Rooms[joinPayload.RoomID].ConnectedUsers ,
+		"error":           false,
+		"message":         "User joined successfully",
+		"room_id":         joinPayload.RoomID,
+		"connected_users": Rooms[joinPayload.RoomID].ConnectedUsers,
 	})
 }
 
 // this websocket function will move to seeprate file later on after
-// fixing sync logic with mutex or semaphores  
+// fixing sync logic with mutex or semaphores rather than single global variable
 func WebSocketHandler(c *gin.Context) {
 	roomidStr := c.Query("roomid")
 	userid := c.Query("userid")
@@ -135,11 +133,14 @@ func WebSocketHandler(c *gin.Context) {
 		return
 	}
 
+	roomMutex.Lock()
+	defer roomMutex.Unlock()
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Println("[WebSocketHandler] WebSocket upgrade failed:", err)
 		return
 	}
+	room.WebSockets[userid] = conn
 
 	log.Printf("[WebSocketHandler] WebSocket connection established for user %s in room %d\n", userid, roomid)
 	go handleMessage(WebSocketUser{UserID: userid, Conn: conn}, room)
@@ -150,16 +151,31 @@ func handleMessage(sender WebSocketUser, room *Room) {
 	for {
 		_, msg, err := sender.Conn.ReadMessage()
 		if err != nil {
-			log.Printf("[handleMessage] Error from %s: %v\n", sender.UserID, err)
+			log.Printf("User %s disconnected: %v", sender.UserID, err)
+
+			room.Mutex.Lock()
+			delete(room.WebSockets, sender.UserID)
+
+			// Optional cleanup from ConnectedUsers
+			newUsers := []User{}
+			for _, u := range room.ConnectedUsers {
+				if u.UserID != sender.UserID {
+					newUsers = append(newUsers, u)
+				}
+			}
+			room.ConnectedUsers = newUsers
+			room.Mutex.Unlock()
+
 			return
 		}
 
 		log.Printf("[handleMessage] Message from %s: %s\n", sender.UserID, string(msg))
 
 		room.Mutex.Lock()
-		for _, user := range room.ConnectedUsers {
-			if user.UserID != sender.UserID {
+		for userID,  _ := range room.WebSockets {
+			if userID != sender.UserID {
 				// WebSocket broadcasting placeholder
+
 			}
 		}
 		room.Mutex.Unlock()

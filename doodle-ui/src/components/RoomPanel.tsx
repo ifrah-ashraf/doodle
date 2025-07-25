@@ -1,6 +1,8 @@
 "use client";
 
 import { createRoom, joinRoom } from "@/app/services/room";
+import useSocketStore from "@/store/socketStore";
+import useUserDataStore from "@/store/userStore";
 import React, { useState } from "react";
 
 type Mode = {
@@ -24,6 +26,9 @@ const RoomPanel = ({ setmode, setusers }: setModeProps) => {
   const [username, setUsername] = useState("");
   const [roomId, setRoomId] = useState("");
 
+  const setSocket = useSocketStore((state) => state.setSocket);
+  const setUserData = useUserDataStore((state) => state.setUserData);
+
   const handleSubmit = async () => {
     if (!userid || !username || (mode === "join" && !roomId)) {
       alert("Please fill all required fields.");
@@ -31,29 +36,43 @@ const RoomPanel = ({ setmode, setusers }: setModeProps) => {
     }
 
     try {
+      let data;
+      let currentRoomId = "";
+
       if (mode === "create") {
-        const data = await createRoom(userid, username);
-        if (!data.error) {
-          console.log("Room created:", data);
-          setmode({ isSelected: true, name: "create" });
-
-          // set initial user as the only one in the list
-          setusers([{ userid, username }]);
-        } else {
-          alert(data.message);
-        }
+        data = await createRoom(userid, username);
+        if (data && !data.error) currentRoomId = data.room_id;
       } else if (mode === "join") {
-        const data = await joinRoom(Number(roomId), userid, username);
-        if (!data.error) {
-          console.log("Joined room:", data);
-          setmode({ isSelected: true, name: "join" });
-
-          // server sends list of connected users
-          setusers(data.connected_users || []);
-        } else {
-          alert(data.message);
-        }
+        data = await joinRoom(Number(roomId), userid, username);
+        if (data && !data.error) currentRoomId = roomId;
       }
+
+      if (!data || data.error || !currentRoomId) {
+        alert(data?.message || "Unknown error.");
+        return;
+      }
+
+      setUserData({
+        userid,
+        username,
+        roomid: currentRoomId.toString(),
+      });
+
+      const socket = setSocket(Number(currentRoomId), userid);
+      if (socket ) {
+        socket.onmessage = (event) => {
+          const msg = JSON.parse(event.data);
+          console.log("📨 Received data:", msg);
+        };
+      }
+
+      // ✅ Update local UI state
+      setmode({ isSelected: true, name: mode });
+      setusers(
+        mode === "create" ? [{ userid, username }] : data.connected_users || []
+      );
+
+      console.log(mode === "create" ? "Room created:" : "Joined room:", data);
     } catch (error) {
       console.error("Request failed:", error);
       alert("Something went wrong.");
