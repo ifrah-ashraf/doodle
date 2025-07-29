@@ -3,7 +3,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { FaPencil } from "react-icons/fa6";
 import { CiEraser } from "react-icons/ci";
 import useSocketStore from "@/store/socketStore";
-//import { io } from "socket.io-client";
 
 // Setup socket (adjust your server URL)
 //const socket = io("http://localhost:3001");

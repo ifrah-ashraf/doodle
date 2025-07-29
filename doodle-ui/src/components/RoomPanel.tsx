@@ -59,7 +59,7 @@ const RoomPanel = ({ setmode, setusers }: setModeProps) => {
       });
 
       const socket = setSocket(Number(currentRoomId), userid);
-      if (socket ) {
+      if (socket) {
         socket.onmessage = (event) => {
           const msg = JSON.parse(event.data);
           console.log("📨 Received data:", msg);

@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-
 	"doodle.io/routes"
 	"github.com/gin-gonic/gin"
 )
