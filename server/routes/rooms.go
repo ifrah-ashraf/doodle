@@ -146,6 +146,10 @@ func WebSocketHandler(c *gin.Context) {
 	go handleMessage(WebSocketUser{UserID: userid, Conn: conn}, room)
 }
 
+type DrawingCordinates struct  {
+	
+}
+
 func handleMessage(sender WebSocketUser, room *Room) {
 	defer sender.Conn.Close()
 	for {
@@ -169,13 +173,13 @@ func handleMessage(sender WebSocketUser, room *Room) {
 			return
 		}
 
-		log.Printf("[handleMessage] Message from %s: %s\n", sender.UserID, string(msg))
-
+		
 		room.Mutex.Lock()
-		for userID,  _ := range room.WebSockets {
+		for userID,  conn := range room.WebSockets {
 			if userID != sender.UserID {
-				// WebSocket broadcasting placeholder
-
+				if err := conn.WriteMessage(websocket.TextMessage , msg); err != nil {
+					log.Printf("Failed to send message to %s: %v", userID, err)
+				}
 			}
 		}
 		room.Mutex.Unlock()

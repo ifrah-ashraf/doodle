@@ -1,8 +1,8 @@
 "use client";
 
-import { createRoom, joinRoom } from "@/app/services/room";
+import { createRoom, joinRoom } from "@/services/room";
 import useSocketStore from "@/store/socketStore";
-import useUserDataStore from "@/store/userStore";
+import useUserDataStore from "@/store/useUserDataStore";
 import React, { useState } from "react";
 
 type Mode = {
@@ -66,7 +66,6 @@ const RoomPanel = ({ setmode, setusers }: setModeProps) => {
         };
       }
 
-      // ✅ Update local UI state
       setmode({ isSelected: true, name: mode });
       setusers(
         mode === "create" ? [{ userid, username }] : data.connected_users || []

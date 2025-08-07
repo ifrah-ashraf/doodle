@@ -10,7 +10,7 @@ export const createRoom = async (userid: string, username: string) => {
     return res.data;
   } catch (error) {
     console.error("Create Room Failed:", error);
-    throw error;
+    throw new Error(`Creation of room failed ${error}`);
   }
 };
 
@@ -25,6 +25,6 @@ export const joinRoom = async (roomid: number, userid: string, username: string)
     return res.data;
   } catch (error) {
     console.error("Join Room Failed:", error);
-    throw error;
+    throw new Error(`Joining of room failed ${error}`);
   }
 };

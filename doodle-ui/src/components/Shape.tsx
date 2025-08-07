@@ -1,22 +1,20 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FaPencil } from "react-icons/fa6";
 import { CiEraser } from "react-icons/ci";
 import useSocketStore from "@/store/socketStore";
-
-// Setup socket (adjust your server URL)
-//const socket = io("http://localhost:3001");
+import useUserDataStore from "@/store/useUserDataStore";
 
 type DrawingData = {
-  type: "draw"; // message type
-  roomid: number;
+  type: "draw";
+  roomid: string;
   userid: string;
   data: {
     x: number;
     y: number;
     color: string;
     size: number;
-    tool: "pen" | "eraser" | "marker"; // add more as needed
+    tool: "pencil" | "eraser";
   };
 };
 
@@ -26,81 +24,82 @@ function Shape() {
   const isDrawing = useRef(false);
 
   const [tool, setTool] = useState<"pencil" | "eraser">("pencil");
-  //const socket = useSocketStore((state) => state.socket)
 
-  // Handle tool change
-  const getStrokeStyle = () => (tool === "pencil" ? "#000" : "#fff");
-  const getLineWidth = () => (tool === "pencil" ? 2 : 20);
+  const socket = useSocketStore((state) => state.socket);
+  const roomId = useUserDataStore((state) => state.roomid);
+  const userId = useUserDataStore((state) => state.userid);
 
-  // Broadcast the drawing action
-  /* const broadcastDrawing = (type: "start" | "draw", x: number, y: number) => {
-    if
-    socket.emit("draw", {
-      type,
-      x,
-      y,
-      color: getStrokeStyle(),
-      width: getLineWidth(),
-    });
-  };  */
+  const getStrokeStyle = useCallback(
+    () => (tool === "pencil" ? "#000" : "#fff"),
+    [tool]
+  );
+  const getLineWidth = useCallback(() => (tool === "pencil" ? 2 : 20), [tool]);
 
-  // Mouse events
-  const startDrawing = (e: MouseEvent) => {
-    if (!ctxRef.current) return;
-    isDrawing.current = true;
+  const broadcastDrawing = useCallback(
+    (x: number, y: number) => {
+      if (!socket) return;
 
-    const x = e.offsetX;
-    const y = e.offsetY;
+      const drawPayload: DrawingData = {
+        type: "draw",
+        roomid: roomId,
+        userid: userId,
+        data: {
+          x,
+          y,
+          color: getStrokeStyle(),
+          size: getLineWidth(),
+          tool,
+        },
+      };
 
-    ctxRef.current.strokeStyle = getStrokeStyle();
-    ctxRef.current.lineWidth = getLineWidth();
-    ctxRef.current.beginPath();
-    ctxRef.current.moveTo(x, y);
+      socket.send(JSON.stringify(drawPayload));
+    },
+    [socket, roomId, userId, tool, getLineWidth, getStrokeStyle]
+  );
 
-    //broadcastDrawing("start", x, y);
-  };
+  const startDrawing = useCallback(
+    (e: MouseEvent) => {
+      if (!ctxRef.current) return;
 
-  const draw = (e: MouseEvent) => {
-    if (!isDrawing.current || !ctxRef.current || !canvasRef.current) return;
+      const x = e.offsetX;
+      const y = e.offsetY;
 
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+      isDrawing.current = true;
 
-    ctxRef.current.lineTo(x, y);
-    ctxRef.current.stroke();
+      ctxRef.current.strokeStyle = getStrokeStyle();
+      ctxRef.current.lineWidth = getLineWidth();
+      ctxRef.current.beginPath();
+      ctxRef.current.moveTo(x, y);
 
-    //broadcastDrawing("draw", x, y);
-  };
+      broadcastDrawing(x, y);
+    },
+    [broadcastDrawing, getLineWidth, getStrokeStyle]
+  );
 
-  const endDrawing = () => {
-    isDrawing.current = false;
-  };
+  const draw = useCallback(
+    (e: MouseEvent) => {
+      if (!isDrawing.current || !ctxRef.current || !canvasRef.current) return;
 
-  // WebSocket drawing listener
-  /* useEffect(() => {
-    socket.on("receive-draw", ({ type, x, y, color, width }) => {
-      const ctx = ctxRef.current;
-      if (!ctx) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
 
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
-
-      if (type === "start") {
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-      } else if (type === "draw") {
-        ctx.lineTo(x, y);
-        ctx.stroke();
+      if (tool === "eraser") {
+        ctxRef.current.clearRect(x - 10, y - 10, 20, 20);
+      } else {
+        ctxRef.current.lineTo(x, y);
+        ctxRef.current.stroke();
       }
-    });
 
-    return () => {
-      socket.off("receive-draw");
-    };
-  }, []); */
+      broadcastDrawing(x, y);
+    },
+    [broadcastDrawing, tool]
+  );
 
-  // Setup canvas
+  const endDrawing = useCallback(() => {
+    isDrawing.current = false;
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -119,11 +118,33 @@ function Shape() {
       canvas.removeEventListener("mouseup", endDrawing);
       canvas.removeEventListener("mouseleave", endDrawing);
     };
-  }, [tool]);
+  }, [startDrawing, draw, endDrawing]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+
+      if (message.type === "draw") {
+        const { x, y, color, size } = message.data;
+        const ctx = ctxRef.current;
+        if (!ctx) return;
+
+        if (tool === "eraser") {
+          ctx.clearRect(x - size / 2, y - size / 2, size, size);
+        } else {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = size;
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+      }
+    };
+  }, [socket, tool]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen">
-      {/* Drawing canvas */}
       <canvas
         ref={canvasRef}
         width={700}
@@ -131,7 +152,6 @@ function Shape() {
         className="border border-black bg-white rounded-md"
       />
 
-      {/* Tools at bottom */}
       <div className="mt-4 flex gap-4">
         <button
           onClick={() => setTool("pencil")}
