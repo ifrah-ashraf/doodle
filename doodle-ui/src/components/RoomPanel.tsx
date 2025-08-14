@@ -62,7 +62,7 @@ const RoomPanel = ({ setmode, setusers }: setModeProps) => {
       if (socket) {
         socket.onmessage = (event) => {
           const msg = JSON.parse(event.data);
-          console.log("📨 Received data:", msg);
+          console.log(" Received data:", msg);
         };
       }
 

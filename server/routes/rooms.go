@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -97,6 +98,8 @@ func JoinRoom(c *gin.Context) {
 	room.Mutex.Unlock()
 
 	log.Printf("[JoinRoom] User %s (%s) joined room %d\n", newUser.Username, newUser.UserID, joinPayload.RoomID)
+
+	fmt.Println("Connected users are : ", Rooms[joinPayload.RoomID].ConnectedUsers)
 
 	c.JSON(http.StatusOK, gin.H{
 		"error":           false,
