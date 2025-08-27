@@ -1,10 +1,9 @@
 "use client";
+import Message from "@/components/MessageBox/Message";
 import RoomPanel from "@/components/RoomPanel";
 import Shape from "@/components/Shape";
 import UserList from "@/components/UserList";
-import { useEffect, useState } from "react";
-
-//const socket = io("http://localhost:3001");
+import { useState } from "react";
 
 type Mode = {
   isSelected: boolean;
@@ -36,6 +35,7 @@ export default function Home() {
         <>
           <UserList users={users} />
           <Shape />
+          <Message/>
         </>
       ) : (
         <RoomPanel setmode={setMode} setusers={setUsers} />
