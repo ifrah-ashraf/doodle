@@ -5,7 +5,7 @@ function Messages() {
   const messages = ["Hello", "How are you?", "Testing 123"];
 
   return (
-    <div className="flex flex-col h-80 w-72 bg-white border rounded-lg shadow p-3 overflow-y-auto space-y-2">
+    <div className="flex flex-col h-90 w-80 bg-white border rounded-lg shadow p-3 overflow-y-auto space-y-2">
       {messages.length === 0 ? (
         <div className="text-gray-400 text-center mt-10">No messages yet</div>
       ) : (

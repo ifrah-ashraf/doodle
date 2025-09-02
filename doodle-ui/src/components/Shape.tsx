@@ -1,9 +1,10 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
-import { FaPencil } from "react-icons/fa6";
-import { CiEraser } from "react-icons/ci";
 import useSocketStore from "@/store/socketStore";
 import useUserDataStore from "@/store/useUserDataStore";
+import Tools from "./toolbox/Tools";
+
+type Tool = "pencil" | "eraser";
 
 type DrawingData = {
   type: string;
@@ -12,7 +13,7 @@ type DrawingData = {
   data: {
     x: number;
     y: number;
-    tool: string;
+    currentTool: string;
     color: string;
     width: number;
   };
@@ -22,13 +23,15 @@ function Shape() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const isDrawing = useRef(false);
-  const [tool, setTool] = useState<"pencil" | "eraser">("pencil");
+  //const [tool, setTool] = useState<"pencil" | "eraser">("pencil")
+
+  const [currentTool, setCurrentTool] = useState<Tool>("pencil");
 
   const socket = useSocketStore((state) => state.socket);
   const userId = useUserDataStore((state) => state.userid);
   const roomId = useUserDataStore((state) => state.roomid);
 
-  const getLineWidth = () => (tool === "pencil" ? 4 : 20);
+  const getLineWidth = () => (currentTool === "pencil" ? 4 : 20);
   const getStrokeStyle = () => "#000"; // pencil color
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -47,10 +50,10 @@ function Shape() {
 
     const { offsetX, offsetY } = e.nativeEvent;
 
-    if (tool === "pencil") {
+    if (currentTool === "pencil") {
       ctxRef.current.globalCompositeOperation = "source-over";
       ctxRef.current.strokeStyle = getStrokeStyle();
-    } else if (tool === "eraser") {
+    } else if (currentTool === "eraser") {
       ctxRef.current.globalCompositeOperation = "destination-out";
     }
 
@@ -92,7 +95,7 @@ function Shape() {
       data: {
         x,
         y,
-        tool,
+        currentTool,
         color: getStrokeStyle(),
         width: getLineWidth(),
       },
@@ -113,10 +116,10 @@ function Shape() {
           ctx.beginPath();
           ctx.moveTo(parsed.data.x, parsed.data.y);
         } else if (parsed.type === "draw") {
-          if (parsed.data.tool === "pencil") {
+          if (parsed.data.currentTool === "pencil") {
             ctx.globalCompositeOperation = "source-over";
             ctx.strokeStyle = parsed.data.color;
-          } else if (parsed.data.tool === "eraser") {
+          } else if (parsed.data.currentTool === "eraser") {
             ctx.globalCompositeOperation = "destination-out";
           }
 
@@ -133,34 +136,19 @@ function Shape() {
   }, [socket]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
+    <div>
       <canvas
         ref={canvasRef}
         width={700}
         height={500}
-        className="border border-black bg-purple-200 rounded-md"
+        className="border border-black bg-white rounded-md"
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={endDrawing}
         onMouseLeave={endDrawing}
       />
-      <div className="mt-4 flex gap-4">
-        <button
-          onClick={() => setTool("pencil")}
-          className={`w-16 h-16 border-2 rounded-md flex items-center justify-center ${
-            tool === "pencil" ? "bg-yellow-300" : "bg-white"
-          }`}
-        >
-          <FaPencil size={20} />
-        </button>
-        <button
-          onClick={() => setTool("eraser")}
-          className={`w-16 h-16 border-2 rounded-md flex items-center justify-center ${
-            tool === "eraser" ? "bg-yellow-300" : "bg-white"
-          }`}
-        >
-          <CiEraser size={24} />
-        </button>
+      <div className="mt-4 p-3 bg-white shadow-md rounded-md border w-max">
+        <Tools selectedTool={currentTool} onSelectTool={setCurrentTool} />
       </div>
     </div>
   );

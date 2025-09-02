@@ -1,5 +1,5 @@
 "use client";
-import Message from "@/components/MessageBox/Message";
+import Message from "@/components/MessageBox/MessageList";
 import RoomPanel from "@/components/RoomPanel";
 import Shape from "@/components/Shape";
 import UserList from "@/components/UserList";
@@ -19,24 +19,25 @@ export default function Home() {
   const [users, setUsers] = useState<User[]>([]);
   const [mode, setMode] = useState<Mode | null>(null);
 
-  /* useEffect(() => {
-    socket.on("user-joined", (newUser) => {
-      setUsers((prev) => [...prev, newUser]);
-    });
-
-    return () => {
-      socket.off("user-joined");
-    };
-  }, []); */
-
   return (
-    <div className="flex items-center justify-center  bg-gray-100 gap-2 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       {mode?.isSelected ? (
-        <>
-          <UserList users={users} />
-          <Shape />
-          <Message/>
-        </>
+        <div className="flex flex-col md:flex-row gap-4 w-full max-w-[1200px]">
+          {/* User List */}
+          <div className="flex-shrink-0">
+            <UserList users={users} />
+          </div>
+
+          {/* Shape / Canvas */}
+          <div className="flex-1">
+            <Shape />
+          </div>
+
+          {/* Message Box */}
+          <div className="flex-shrink-0">
+            <Message />
+          </div>
+        </div>
       ) : (
         <RoomPanel setmode={setMode} setusers={setUsers} />
       )}
